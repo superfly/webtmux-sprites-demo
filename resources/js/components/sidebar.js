@@ -7,23 +7,259 @@ class WebtmuxSidebar extends LitElement {
     activePane: { type: String },
     activeWindow: { type: String },
     collapsed: { type: Boolean },
+    tmuxOpen: { type: Boolean },
+    step: { type: Number },
   };
 
   static styles = css`
     :host {
       display: block;
-      width: 220px;
+      width: 300px;
       background: #16213e;
       border-left: 1px solid #0f3460;
       padding: 12px;
       overflow-y: auto;
       transition: width 0.2s, padding 0.2s;
+      color: #cdd6f4;
+      font-family: system-ui, -apple-system, sans-serif;
     }
 
     :host(.collapsed) {
       width: 40px;
       padding: 8px;
       overflow: hidden;
+    }
+
+    .tutorial {
+      margin-bottom: 16px;
+    }
+
+    .tutorial-header {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 10px;
+    }
+
+    .tutorial-badge {
+      background: #c084fc;
+      color: #17141f;
+      font-size: 10px;
+      font-weight: 700;
+      padding: 2px 6px;
+      border-radius: 3px;
+      letter-spacing: 0.5px;
+    }
+
+    .tutorial h2 {
+      color: #e0c9ff;
+      font-size: 15px;
+      margin: 0;
+      font-weight: 600;
+    }
+
+    .tutorial p.intro {
+      color: #b4a7d6;
+      font-size: 12px;
+      line-height: 1.4;
+      margin: 0 0 12px 0;
+    }
+
+    .step {
+      background: #1a1a2e;
+      border: 1px solid #2a2a4a;
+      border-left: 3px solid #c084fc;
+      border-radius: 4px;
+      margin-bottom: 8px;
+      overflow: hidden;
+    }
+
+    .step-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 10px;
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .step-header:hover {
+      background: #22224a;
+    }
+
+    .step-num {
+      background: #c084fc;
+      color: #17141f;
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 11px;
+      font-weight: 700;
+      flex-shrink: 0;
+    }
+
+    .step-title {
+      font-size: 12px;
+      color: #e0c9ff;
+      font-weight: 500;
+      flex: 1;
+    }
+
+    .step-chevron {
+      color: #888;
+      font-size: 10px;
+      transition: transform 0.2s;
+    }
+
+    .step.open .step-chevron {
+      transform: rotate(90deg);
+    }
+
+    .step-body {
+      display: none;
+      padding: 0 10px 10px 10px;
+      font-size: 12px;
+      color: #b4a7d6;
+      line-height: 1.5;
+    }
+
+    .step.open .step-body {
+      display: block;
+    }
+
+    .step-body p {
+      margin: 4px 0 8px 0;
+    }
+
+    .step-body code {
+      background: #0f0f1e;
+      border: 1px solid #2a2a4a;
+      padding: 1px 4px;
+      border-radius: 3px;
+      font-size: 11px;
+      color: #f5c2e7;
+    }
+
+    .step-body pre {
+      background: #0f0f1e;
+      border: 1px solid #2a2a4a;
+      padding: 6px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      color: #a6e3a1;
+      margin: 4px 0 8px 0;
+      overflow-x: auto;
+      font-family: ui-monospace, monospace;
+    }
+
+    .cmd {
+      display: flex;
+      align-items: stretch;
+      gap: 4px;
+      margin: 4px 0 8px 0;
+    }
+
+    .cmd pre {
+      flex: 1;
+      margin: 0;
+      background: #0f0f1e;
+      border: 1px solid #2a2a4a;
+      padding: 6px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      color: #a6e3a1;
+      overflow-x: auto;
+      font-family: ui-monospace, monospace;
+      white-space: pre;
+    }
+
+    .copy-btn {
+      background: #1a1a2e;
+      border: 1px solid #2a2a4a;
+      border-radius: 4px;
+      color: #b4a7d6;
+      cursor: pointer;
+      padding: 0 8px;
+      font-size: 10px;
+      font-family: system-ui, sans-serif;
+      display: flex;
+      align-items: center;
+      gap: 3px;
+      transition: all 0.15s;
+      flex-shrink: 0;
+    }
+
+    .copy-btn:hover {
+      border-color: #c084fc;
+      color: #e0c9ff;
+    }
+
+    .copy-btn.copied {
+      border-color: #a6e3a1;
+      color: #a6e3a1;
+    }
+
+    .copy-btn svg {
+      width: 11px;
+      height: 11px;
+    }
+
+    .step-body a {
+      color: #c084fc;
+      text-decoration: underline;
+    }
+
+    .docs-link {
+      display: block;
+      text-align: center;
+      color: #c084fc;
+      font-size: 11px;
+      text-decoration: none;
+      padding: 6px;
+      margin-top: 4px;
+    }
+
+    .docs-link:hover {
+      text-decoration: underline;
+    }
+
+    .tmux-toggle {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      width: 100%;
+      background: transparent;
+      border: none;
+      border-top: 1px solid #0f3460;
+      color: #666;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      padding: 10px 0 8px 0;
+      cursor: pointer;
+    }
+
+    .tmux-toggle:hover {
+      color: #e94560;
+    }
+
+    .tmux-toggle-chevron {
+      transition: transform 0.2s;
+    }
+
+    .tmux-toggle.open .tmux-toggle-chevron {
+      transform: rotate(90deg);
+    }
+
+    .tmux-section {
+      display: none;
+    }
+
+    .tmux-section.open {
+      display: block;
     }
 
     .toggle-btn {
@@ -224,6 +460,8 @@ class WebtmuxSidebar extends LitElement {
     this.activePane = '';
     this.activeWindow = '';
     this.collapsed = false;
+    this.tmuxOpen = false;
+    this.step = 1;
 
     // Listen for layout updates
     window.addEventListener('tmux-layout-update', (e) => {
@@ -247,6 +485,115 @@ class WebtmuxSidebar extends LitElement {
     this.collapsed = !this.collapsed;
   }
 
+  toggleTmux() {
+    this.tmuxOpen = !this.tmuxOpen;
+  }
+
+  setStep(n) {
+    this.step = this.step === n ? 0 : n;
+  }
+
+  renderCmd(cmd) {
+    return html`
+      <div class="cmd">
+        <pre>${cmd}</pre>
+        <button
+          class="copy-btn"
+          @click=${(e) => this.copyCmd(e, cmd)}
+          title="Copy to clipboard"
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="9" y="9" width="13" height="13" rx="2"/>
+            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+          </svg>
+          <span>Copy</span>
+        </button>
+      </div>
+    `;
+  }
+
+  copyCmd(e, cmd) {
+    const btn = e.currentTarget;
+    navigator.clipboard.writeText(cmd).then(() => {
+      btn.classList.add('copied');
+      const label = btn.querySelector('span');
+      const prev = label.textContent;
+      label.textContent = 'Copied!';
+      setTimeout(() => {
+        btn.classList.remove('copied');
+        label.textContent = prev;
+      }, 1500);
+    });
+  }
+
+  renderTutorial() {
+    const steps = [
+      {
+        title: 'Log in to Sprites',
+        body: html`
+          <p>Authenticate with your Fly.io account:</p>
+          ${this.renderCmd('sprite login')}
+          <p>A browser window will open to complete sign-in.</p>
+        `,
+      },
+      {
+        title: 'Create your first Sprite',
+        body: html`
+          <p>Spin up a persistent Linux env and drop into an SSH shell automatically:</p>
+          ${this.renderCmd('sprite create my-sprite')}
+          <p>You'll land inside the Sprite. Everything you install or write to disk sticks around between runs.</p>
+        `,
+      },
+      {
+        title: 'Grab your Sprite URL',
+        body: html`
+          <p>Every Sprite gets a public HTTP URL. Print it so you know where to point your browser next:</p>
+          ${this.renderCmd('sprite-env info')}
+          <p>Copy the URL from the output — you'll open it in step 4.</p>
+        `,
+      },
+      {
+        title: 'Start a Python HTTP server',
+        body: html`
+          <p>From inside the Sprite, serve the current directory on port <code>8080</code>:</p>
+          ${this.renderCmd('python3 -m http.server 8080')}
+          <p>The Sprite auto-routes HTTP traffic to this port. Open the URL from step 3 in your browser to see it.</p>
+          <p>To make it publicly accessible without a token:</p>
+          ${this.renderCmd('sprite config update --url-auth public')}
+        `,
+      },
+    ];
+
+    return html`
+      <div class="tutorial">
+        <div class="tutorial-header">
+          <span class="tutorial-badge">TUTORIAL</span>
+          <h2>Try Fly.io Sprites</h2>
+        </div>
+        <p class="intro">
+          Follow along in the terminal to spin up a persistent cloud VM and serve HTTP from it.
+        </p>
+        ${steps.map((s, i) => {
+          const n = i + 1;
+          const open = this.step === n;
+          return html`
+            <div class="step ${open ? 'open' : ''}">
+              <div class="step-header" @click=${() => this.setStep(n)}>
+                <div class="step-num">${n}</div>
+                <div class="step-title">${s.title}</div>
+                <span class="step-chevron">▶</span>
+              </div>
+              <div class="step-body">${s.body}</div>
+            </div>
+          `;
+        })}
+        <a class="docs-link" href="https://docs.sprites.dev" target="_blank" rel="noopener">
+          Read the full docs →
+        </a>
+      </div>
+    `;
+  }
+
   render() {
     const toggleIcon = this.collapsed
       ? html`<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>`
@@ -256,8 +603,8 @@ class WebtmuxSidebar extends LitElement {
       return html`
         <button class="toggle-btn" @click=${this.toggleCollapsed}>${toggleIcon}</button>
         <div class="sidebar-content">
-          <h3>tmux</h3>
-          <p style="color: #666; font-size: 12px;">Connecting...</p>
+          ${this.renderTutorial()}
+          <p style="color: #666; font-size: 12px;">Connecting to tmux…</p>
         </div>
       `;
     }
@@ -270,6 +617,13 @@ class WebtmuxSidebar extends LitElement {
     return html`
       <button class="toggle-btn" @click=${this.toggleCollapsed}>${toggleIcon}</button>
       <div class="sidebar-content">
+      ${this.renderTutorial()}
+
+      <button class="tmux-toggle ${this.tmuxOpen ? 'open' : ''}" @click=${this.toggleTmux}>
+        <span>tmux controls</span>
+        <span class="tmux-toggle-chevron">▶</span>
+      </button>
+      <div class="tmux-section ${this.tmuxOpen ? 'open' : ''}">
       ${showSessions ? html`
         <h3>Sessions</h3>
         <div class="session-tabs">
@@ -358,6 +712,7 @@ class WebtmuxSidebar extends LitElement {
       <div class="session-info">
         Session: ${this.layout.sessionName}<br>
         ${this.layout.windows?.length || 0} windows, ${activeWindow?.panes?.length || 0} panes
+      </div>
       </div>
       </div>
     `;
