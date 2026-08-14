@@ -8,6 +8,7 @@ class WebtmuxSidebar extends LitElement {
     activeWindow: { type: String },
     collapsed: { type: Boolean },
     tmuxOpen: { type: Boolean },
+    activeTutorial: { type: String },
     step: { type: Number },
   };
 
@@ -30,15 +31,15 @@ class WebtmuxSidebar extends LitElement {
       overflow: hidden;
     }
 
-    .tutorial {
+    .tutorials {
       margin-bottom: 16px;
     }
 
-    .tutorial-header {
+    .tutorials-header {
       display: flex;
       align-items: center;
       gap: 6px;
-      margin-bottom: 10px;
+      margin-bottom: 12px;
     }
 
     .tutorial-badge {
@@ -51,18 +52,79 @@ class WebtmuxSidebar extends LitElement {
       letter-spacing: 0.5px;
     }
 
-    .tutorial h2 {
+    .tutorials-header h2 {
       color: #e0c9ff;
       font-size: 15px;
       margin: 0;
       font-weight: 600;
     }
 
-    .tutorial p.intro {
+    .tutorial {
+      background: #12122a;
+      border: 1px solid #2a2a4a;
+      border-radius: 6px;
+      margin-bottom: 8px;
+      overflow: hidden;
+    }
+
+    .tutorial.open {
+      border-color: #c084fc;
+    }
+
+    .tutorial-title {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 12px;
+      cursor: pointer;
+      user-select: none;
+      background: #1a1a35;
+    }
+
+    .tutorial-title:hover {
+      background: #22224a;
+    }
+
+    .tutorial-title h3 {
+      color: #e0c9ff;
+      font-size: 13px;
+      font-weight: 600;
+      margin: 0;
+      flex: 1;
+      text-transform: none;
+      letter-spacing: 0;
+    }
+
+    .tutorial-icon {
+      font-size: 14px;
+      flex-shrink: 0;
+    }
+
+    .tutorial-chevron {
+      color: #888;
+      font-size: 10px;
+      transition: transform 0.2s;
+      flex-shrink: 0;
+    }
+
+    .tutorial.open .tutorial-chevron {
+      transform: rotate(90deg);
+    }
+
+    .tutorial-body {
+      display: none;
+      padding: 10px 12px 12px 12px;
+    }
+
+    .tutorial.open .tutorial-body {
+      display: block;
+    }
+
+    .tutorial-body p.intro {
       color: #b4a7d6;
       font-size: 12px;
       line-height: 1.4;
-      margin: 0 0 12px 0;
+      margin: 0 0 10px 0;
     }
 
     .step {
@@ -461,6 +523,7 @@ class WebtmuxSidebar extends LitElement {
     this.activeWindow = '';
     this.collapsed = false;
     this.tmuxOpen = false;
+    this.activeTutorial = 'getting-started';
     this.step = 1;
 
     // Listen for layout updates
@@ -487,6 +550,15 @@ class WebtmuxSidebar extends LitElement {
 
   toggleTmux() {
     this.tmuxOpen = !this.tmuxOpen;
+  }
+
+  setTutorial(id) {
+    if (this.activeTutorial === id) {
+      this.activeTutorial = '';
+    } else {
+      this.activeTutorial = id;
+      this.step = 1;
+    }
   }
 
   setStep(n) {
@@ -527,66 +599,176 @@ class WebtmuxSidebar extends LitElement {
   }
 
   renderTutorial() {
-    const steps = [
+    const tutorials = [
       {
-        title: 'Log in to Sprites',
-        body: html`
-          <p>Authenticate with your Fly.io account:</p>
-          ${this.renderCmd('sprite login')}
-          <p>A browser window will open to complete sign-in.</p>
-        `,
+        id: 'getting-started',
+        icon: '🚀',
+        title: 'Getting started',
+        intro: 'Spin up a persistent cloud VM and serve HTTP from it.',
+        steps: [
+          {
+            title: 'Log in to Sprites',
+            body: html`
+              <p>Authenticate with your Fly.io account:</p>
+              ${this.renderCmd('sprite login')}
+              <p>A browser window will open to complete sign-in.</p>
+            `,
+          },
+          {
+            title: 'Create your first Sprite',
+            body: html`
+              <p>Spin up a persistent Linux env and drop into an SSH shell automatically:</p>
+              ${this.renderCmd('sprite create my-sprite')}
+              <p>You'll land inside the Sprite. Everything you install or write to disk sticks around between runs.</p>
+            `,
+          },
+          {
+            title: 'Grab your Sprite URL',
+            body: html`
+              <p>Every Sprite gets a public HTTP URL. Print it so you know where to point your browser next:</p>
+              ${this.renderCmd('sprite-env info')}
+              <p>Copy the URL from the output — you'll open it in step 4.</p>
+            `,
+          },
+          {
+            title: 'Start a Python HTTP server',
+            body: html`
+              <p>From inside the Sprite, serve the current directory on port <code>8080</code>:</p>
+              ${this.renderCmd('python3 -m http.server 8080')}
+              <p>The Sprite auto-routes HTTP traffic to this port. Open the URL from step 3 in your browser to see it.</p>
+              <p>To make it publicly accessible without a token:</p>
+              ${this.renderCmd('sprite config update --url-auth public')}
+            `,
+          },
+        ],
       },
       {
-        title: 'Create your first Sprite',
-        body: html`
-          <p>Spin up a persistent Linux env and drop into an SSH shell automatically:</p>
-          ${this.renderCmd('sprite create my-sprite')}
-          <p>You'll land inside the Sprite. Everything you install or write to disk sticks around between runs.</p>
+        id: 'services',
+        icon: '♾️',
+        title: 'Run a server forever',
+        intro: html`
+          Processes you start by hand die on a cold wake. A
+          <a href="https://docs.sprites.dev/concepts/services/" target="_blank" rel="noopener">service</a>
+          is owned by the Sprite runtime: it restarts on crash, comes back on boot, and can auto-start on incoming HTTP.
         `,
+        steps: [
+          {
+            title: 'Register your server as a service',
+            body: html`
+              <p>From inside the Sprite, define a Python server that owns the Sprite's HTTP URL:</p>
+              ${this.renderCmd('sprite-env services create web --cmd python3 --args "-m,http.server,8080" --http-port 8080')}
+              <p><code>--http-port</code> routes the Sprite's URL to port 8080 and wakes the service on request.</p>
+            `,
+          },
+          {
+            title: 'Verify it\u2019s running',
+            body: html`
+              <p>List services and their status:</p>
+              ${this.renderCmd('sprite-env services list')}
+              <p>Or inspect one:</p>
+              ${this.renderCmd('sprite-env services get web')}
+            `,
+          },
+          {
+            title: 'Tail the logs',
+            body: html`
+              <p>All stdout/stderr lands in a single log file per service:</p>
+              ${this.renderCmd('tail -f /.sprite/logs/services/web.log')}
+            `,
+          },
+          {
+            title: 'Restart, stop, delete',
+            body: html`
+              <p>Everyday management:</p>
+              ${this.renderCmd('sprite-env services restart web')}
+              ${this.renderCmd('sprite-env services stop web')}
+              ${this.renderCmd('sprite-env services delete web')}
+              <p><code>stop</code> is sticky — the runtime won\u2019t auto-restart a service you stopped.</p>
+            `,
+          },
+        ],
       },
       {
-        title: 'Grab your Sprite URL',
-        body: html`
-          <p>Every Sprite gets a public HTTP URL. Print it so you know where to point your browser next:</p>
-          ${this.renderCmd('sprite-env info')}
-          <p>Copy the URL from the output — you'll open it in step 4.</p>
+        id: 'checkpoints',
+        icon: '⏪',
+        title: 'Time travel with checkpoints',
+        intro: html`
+          A
+          <a href="https://docs.sprites.dev/concepts/checkpoints/" target="_blank" rel="noopener">checkpoint</a>
+          is a filesystem snapshot you take on purpose. Do something risky, roll back if it breaks.
         `,
-      },
-      {
-        title: 'Start a Python HTTP server',
-        body: html`
-          <p>From inside the Sprite, serve the current directory on port <code>8080</code>:</p>
-          ${this.renderCmd('python3 -m http.server 8080')}
-          <p>The Sprite auto-routes HTTP traffic to this port. Open the URL from step 3 in your browser to see it.</p>
-          <p>To make it publicly accessible without a token:</p>
-          ${this.renderCmd('sprite config update --url-auth public')}
-        `,
+        steps: [
+          {
+            title: 'Take a snapshot',
+            body: html`
+              <p>Before a risky change, save the current state with a comment:</p>
+              ${this.renderCmd('sprite-env checkpoints create --comment "clean setup"')}
+              <p>You'll get back a sequential ID like <code>v1</code>.</p>
+            `,
+          },
+          {
+            title: 'Break something (on purpose)',
+            body: html`
+              <p>Try an experiment — install packages, delete files, whatever:</p>
+              ${this.renderCmd('rm -rf node_modules && npm install some-broken-thing')}
+            `,
+          },
+          {
+            title: 'Roll back',
+            body: html`
+              <p>Restore replaces the filesystem overlay and restarts the environment:</p>
+              ${this.renderCmd('sprite-env checkpoints restore v1')}
+              <p><strong>Destructive:</strong> anything not in the checkpoint is gone. Take a fresh checkpoint first if unsure.</p>
+            `,
+          },
+          {
+            title: 'Peek without restoring',
+            body: html`
+              <p>The last five checkpoints are mounted read-only — diff them against the current state:</p>
+              ${this.renderCmd('diff /.sprite/checkpoints/v1/etc/hosts /etc/hosts')}
+            `,
+          },
+        ],
       },
     ];
 
     return html`
-      <div class="tutorial">
-        <div class="tutorial-header">
-          <span class="tutorial-badge">TUTORIAL</span>
+      <div class="tutorials">
+        <div class="tutorials-header">
+          <span class="tutorial-badge">TUTORIALS</span>
           <h2>Try Fly.io Sprites</h2>
         </div>
-        <p class="intro">
-          Follow along in the terminal to spin up a persistent cloud VM and serve HTTP from it.
-        </p>
-        ${steps.map((s, i) => {
-          const n = i + 1;
-          const open = this.step === n;
+
+        ${tutorials.map(t => {
+          const tOpen = this.activeTutorial === t.id;
           return html`
-            <div class="step ${open ? 'open' : ''}">
-              <div class="step-header" @click=${() => this.setStep(n)}>
-                <div class="step-num">${n}</div>
-                <div class="step-title">${s.title}</div>
-                <span class="step-chevron">▶</span>
+            <div class="tutorial ${tOpen ? 'open' : ''}">
+              <div class="tutorial-title" @click=${() => this.setTutorial(t.id)}>
+                <span class="tutorial-icon">${t.icon}</span>
+                <h3>${t.title}</h3>
+                <span class="tutorial-chevron">▶</span>
               </div>
-              <div class="step-body">${s.body}</div>
+              <div class="tutorial-body">
+                <p class="intro">${t.intro}</p>
+                ${t.steps.map((s, i) => {
+                  const n = i + 1;
+                  const sOpen = tOpen && this.step === n;
+                  return html`
+                    <div class="step ${sOpen ? 'open' : ''}">
+                      <div class="step-header" @click=${() => this.setStep(n)}>
+                        <div class="step-num">${n}</div>
+                        <div class="step-title">${s.title}</div>
+                        <span class="step-chevron">▶</span>
+                      </div>
+                      <div class="step-body">${s.body}</div>
+                    </div>
+                  `;
+                })}
+              </div>
             </div>
           `;
         })}
+
         <a class="docs-link" href="https://docs.sprites.dev" target="_blank" rel="noopener">
           Read the full docs →
         </a>
