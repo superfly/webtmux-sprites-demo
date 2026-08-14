@@ -1,13 +1,15 @@
-# webtmux
+# webtmux-sprites-demo
 
-A web-based terminal with tmux-specific features. Access your tmux sessions from any browser with a visual pane layout, touch-friendly controls, and automatic scroll-to-copy-mode.
+A browser-based tmux terminal, packaged as a **demo app for [Fly.io Sprites](https://docs.sprites.dev)**. Ships with an interactive right-side tutorial that walks new users through their first Sprite: logging in, creating a Sprite, running an HTTP server, using services, and time-travelling with checkpoints.
+
+This is a fork of [chrismccord/webtmux](https://github.com/chrismccord/webtmux) with a Sprites onboarding sidebar added to the web UI.
 
 ## Quick Start (Sprite)
 
-Deploy webtmux as a service on [Sprite](https://sprites.app):
+Deploy webtmux as a service on a [Sprite](https://docs.sprites.dev):
 
 ```bash
-sudo curl -fsSL https://raw.githubusercontent.com/chrismccord/webtmux/main/builds/webtmux-linux-amd64 \
+sudo curl -fsSL https://raw.githubusercontent.com/superfly/webtmux-sprites-demo/main/builds/webtmux-linux-amd64 \
   -o /usr/local/bin/webtmux && \
   sudo chmod +x /usr/local/bin/webtmux && \
   sprite-env services create webtmux \
@@ -16,7 +18,7 @@ sudo curl -fsSL https://raw.githubusercontent.com/chrismccord/webtmux/main/build
     --http-port 8080
 ```
 
-Replace `user:pass` with your desired credentials.
+Open the Sprite's URL and follow the tutorial in the sidebar.
 
 ## Features
 
@@ -45,8 +47,8 @@ Prebuilt binaries are available in the `builds/` directory for all major platfor
 
 ```bash
 # Clone and use prebuilt binary (example for Linux x64)
-git clone https://github.com/chrismccord/webtmux.git
-cd webtmux
+git clone https://github.com/superfly/webtmux-sprites-demo.git
+cd webtmux-sprites-demo
 chmod +x builds/webtmux-linux-amd64
 ./builds/webtmux-linux-amd64 -w tmux new-session -A -s main
 
@@ -58,8 +60,8 @@ sudo cp builds/webtmux-linux-amd64 /usr/local/bin/webtmux
 
 ```bash
 # Clone the repository
-git clone https://github.com/chrismccord/webtmux.git
-cd webtmux
+git clone https://github.com/superfly/webtmux-sprites-demo.git
+cd webtmux-sprites-demo
 
 # Build for current platform
 make build
@@ -149,7 +151,7 @@ WebTmux extends the gotty protocol with tmux-specific message types:
 ### Project Structure
 
 ```
-webtmux/
+webtmux-sprites-demo/
 ├── main.go                 # CLI entry point
 ├── server/                 # HTTP server & WebSocket handlers
 ├── webtty/                 # WebTTY protocol implementation
@@ -158,7 +160,7 @@ webtmux/
 ├── bindata/static/         # Embedded web assets
 │   ├── js/
 │   │   ├── webtmux.js      # Main frontend
-│   │   └── components/     # Lit.js web components
+│   │   └── components/     # Lit.js web components (incl. Sprites tutorial sidebar)
 │   └── index.html
 └── resources/              # Source assets (for development)
 ```
@@ -187,7 +189,7 @@ make release
 
 ## Credits
 
-WebTmux is a fork of [gotty](https://github.com/yudai/gotty) by Iwasaki Yudai.
+This project is a fork of [chrismccord/webtmux](https://github.com/chrismccord/webtmux), which is itself a fork of [gotty](https://github.com/yudai/gotty) by Iwasaki Yudai. The Sprites tutorial sidebar is the addition made in this fork.
 
 ## License
 
