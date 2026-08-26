@@ -2,6 +2,7 @@
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { WebglAddon } from '@xterm/addon-webgl';
+import { WebLinksAddon } from '@xterm/addon-web-links';
 
 // Import components
 import './components/sidebar.js';
@@ -106,6 +107,11 @@ class WebTmux {
     } catch (e) {
       console.warn('WebGL addon not supported:', e);
     }
+
+    // Make URLs in the terminal clickable (opens in a new tab).
+    this.terminal.loadAddon(new WebLinksAddon((event, uri) => {
+      window.open(uri, '_blank', 'noopener,noreferrer');
+    }));
 
     // Fit terminal and focus
     this.fitAddon.fit();
