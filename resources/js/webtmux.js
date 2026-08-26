@@ -430,6 +430,16 @@ class WebTmux {
     this.sendMessage(MSG.TmuxSwitchSession, sessionName);
   }
 
+  // Paste arbitrary text into the terminal as if the user typed it.
+  // Used by sidebar shortcuts like "Connect with GitHub".
+  pasteToTerminal(text) {
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
+    const bytes = this.encoder.encode(text);
+    const binary = String.fromCharCode(...bytes);
+    this.sendMessage(MSG.Input, btoa(binary));
+    this.terminal.focus();
+  }
+
   enterCopyMode() {
     this.sendMessage(MSG.TmuxCopyMode, '1');
     this.inCopyMode = true;
