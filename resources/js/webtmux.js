@@ -46,6 +46,27 @@ class WebTmux {
     this.layout = null;
     this.pendingSessionSwitch = null;
     this.oscBuffer = ''; // Buffer for OSC sequence detection
+    this.urlScanBuffer = ''; // Rolling buffer to detect URLs split across chunks
+    this.openedAuthFlows = new Set(); // Dedup key: `${name}:${url}:${code||''}`
+
+    // Auth flows the terminal can auto-open in a new tab.
+    // - urlPattern: matches the URL to open
+    // - codePattern (optional): pulls a one-time code out of nearby text
+    //   and copies it to the clipboard
+    this.authFlows = [
+      {
+        name: 'sprite',
+        label: 'Sprites login',
+        urlPattern: /https:\/\/fly\.io\/cli\/sprites\/[a-f0-9]{16,}/gi,
+      },
+      {
+        name: 'gh',
+        label: 'GitHub login',
+        urlPattern: /https:\/\/github\.com\/login\/device/gi,
+        // e.g. "First copy your one-time code: 30EC-A622"
+        codePattern: /one-time code:\s*([A-Z0-9]{4}-[A-Z0-9]{4})/i,
+      },
+    ];
 
     this.init();
   }
@@ -315,6 +336,9 @@ class WebTmux {
         // Check for OSC 52 clipboard sequences and handle them
         const processed = this.handleOSC52(binaryString);
 
+        // Detect and auto-open known auth URLs (Sprites, gh, …)
+        this.detectAuthFlows(processed);
+
         const bytes = new Uint8Array(processed.length);
         for (let i = 0; i < processed.length; i++) {
           bytes[i] = processed.charCodeAt(i);
@@ -414,6 +438,153 @@ class WebTmux {
   exitCopyMode() {
     this.sendMessage(MSG.TmuxCopyMode, '0');
     this.inCopyMode = false;
+  }
+
+  // Detect known browser-based auth flows in terminal output and auto-open them.
+  // Handles at least:
+  //   - `sprite login` → https://fly.io/cli/sprites/<hex>
+  //   - `gh auth login --web` → https://github.com/login/device (plus one-time code)
+  detectAuthFlows(chunk) {
+    // Append to rolling buffer, strip ANSI escapes so the regex is clean.
+    this.urlScanBuffer += chunk;
+    if (this.urlScanBuffer.length > 4096) {
+      this.urlScanBuffer = this.urlScanBuffer.slice(-4096);
+    }
+    const stripped = this.urlScanBuffer.replace(/\x1b\[[0-9;?]*[a-zA-Z]/g, '');
+
+    for (const flow of this.authFlows) {
+      const re = new RegExp(flow.urlPattern.source, flow.urlPattern.flags);
+      let match;
+      while ((match = re.exec(stripped)) !== null) {
+        const url = match[0];
+        let code = null;
+        if (flow.codePattern) {
+          const codeMatch = stripped.match(flow.codePattern);
+          if (codeMatch) code = codeMatch[1];
+          // If a code is expected but hasn't streamed in yet, wait for more.
+          if (!code) continue;
+        }
+        const key = `${flow.name}:${url}:${code || ''}`;
+        if (this.openedAuthFlows.has(key)) continue;
+        this.openedAuthFlows.add(key);
+        this.openAuthUrl(flow, url, code);
+      }
+    }
+  }
+
+  openAuthUrl(flow, url, code) {
+    // Copy the one-time code to the clipboard so the user can paste it
+    // straight into the login page.
+    if (code) {
+      try {
+        navigator.clipboard.writeText(code);
+      } catch (e) {
+        // Ignore — the code is still visible in the banner.
+      }
+    }
+
+    // Try to open directly. Popup blockers usually block this outside of a
+    // user gesture, in which case win is null — we fall back to a banner.
+    let win = null;
+    try {
+      win = window.open(url, '_blank', 'noopener,noreferrer');
+    } catch (e) {
+      win = null;
+    }
+    this.showAuthBanner(flow, url, code, !!win);
+  }
+
+  showAuthBanner(flow, url, code, opened) {
+    // Remove any prior banner.
+    const existing = document.getElementById('sprite-login-banner');
+    if (existing) existing.remove();
+
+    const banner = document.createElement('div');
+    banner.id = 'sprite-login-banner';
+    banner.style.cssText = [
+      'position:fixed',
+      'top:16px',
+      'left:50%',
+      'transform:translateX(-50%)',
+      'z-index:9999',
+      'background:#12122a',
+      'border:1px solid #c084fc',
+      'border-radius:8px',
+      'padding:12px 16px',
+      'box-shadow:0 8px 24px rgba(0,0,0,0.4)',
+      'color:#e0c9ff',
+      'font-family:system-ui,-apple-system,sans-serif',
+      'font-size:13px',
+      'display:flex',
+      'align-items:center',
+      'gap:12px',
+      'max-width:90vw',
+    ].join(';');
+
+    const label = document.createElement('span');
+    if (code) {
+      label.textContent = opened
+        ? `Opened ${flow.label} in a new tab. Code copied to clipboard:`
+        : `Popup blocked — code copied to clipboard. Click to finish ${flow.label}:`;
+    } else {
+      label.textContent = opened
+        ? `Opened ${flow.label} in a new tab →`
+        : `Popup blocked — click to finish ${flow.label}:`;
+    }
+    banner.appendChild(label);
+
+    if (code) {
+      const codeEl = document.createElement('code');
+      codeEl.textContent = code;
+      codeEl.style.cssText = [
+        'background:#0f0f1e',
+        'border:1px solid #2a2a4a',
+        'color:#a6e3a1',
+        'padding:3px 8px',
+        'border-radius:4px',
+        'font-family:ui-monospace,monospace',
+        'font-size:13px',
+        'letter-spacing:1px',
+      ].join(';');
+      banner.appendChild(codeEl);
+    }
+
+    const link = document.createElement('a');
+    link.href = url;
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+    link.textContent = 'Open login page';
+    link.style.cssText = [
+      'background:#c084fc',
+      'color:#17141f',
+      'padding:4px 10px',
+      'border-radius:4px',
+      'text-decoration:none',
+      'font-weight:600',
+    ].join(';');
+    banner.appendChild(link);
+
+    const close = document.createElement('button');
+    close.textContent = '×';
+    close.setAttribute('aria-label', 'Dismiss');
+    close.style.cssText = [
+      'background:transparent',
+      'border:none',
+      'color:#b4a7d6',
+      'font-size:18px',
+      'line-height:1',
+      'cursor:pointer',
+      'padding:0 0 0 4px',
+    ].join(';');
+    close.addEventListener('click', () => banner.remove());
+    banner.appendChild(close);
+
+    document.body.appendChild(banner);
+
+    // Auto-dismiss after 30s only when there's no code the user still needs.
+    if (opened && !code) {
+      setTimeout(() => banner.remove(), 30000);
+    }
   }
 
   // Handle OSC 52 clipboard sequences from tmux
