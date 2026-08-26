@@ -47,7 +47,11 @@ class WebTmux {
     this.pendingSessionSwitch = null;
     this.oscBuffer = ''; // Buffer for OSC sequence detection
     this.urlScanBuffer = ''; // Rolling buffer to detect URLs split across chunks
-    this.openedAuthFlows = new Set(); // Dedup key: `${name}:${url}:${code||''}`
+    // Dedup key: `${name}:${url}:${code||''}`. Persisted in sessionStorage so
+    // page refreshes (which replay tmux scrollback) don't re-open browser tabs.
+    // Cleared automatically when the tab is closed.
+    this.authFlowStorageKey = 'webtmux:openedAuthFlows';
+    this.openedAuthFlows = this.loadOpenedAuthFlows();
 
     // Auth flows the terminal can auto-open in a new tab.
     // - urlPattern: matches the URL to open
@@ -477,8 +481,30 @@ class WebTmux {
         const key = `${flow.name}:${url}:${code || ''}`;
         if (this.openedAuthFlows.has(key)) continue;
         this.openedAuthFlows.add(key);
+        this.persistOpenedAuthFlows();
         this.openAuthUrl(flow, url, code);
       }
+    }
+  }
+
+  loadOpenedAuthFlows() {
+    try {
+      const raw = sessionStorage.getItem(this.authFlowStorageKey);
+      if (raw) return new Set(JSON.parse(raw));
+    } catch (e) {
+      // sessionStorage may be unavailable (private mode, etc.) — fall through.
+    }
+    return new Set();
+  }
+
+  persistOpenedAuthFlows() {
+    try {
+      sessionStorage.setItem(
+        this.authFlowStorageKey,
+        JSON.stringify([...this.openedAuthFlows]),
+      );
+    } catch (e) {
+      // Ignore — dedup will still work for the current page load.
     }
   }
 
