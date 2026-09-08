@@ -42,7 +42,10 @@ class WebTmux {
     this.fitAddon = null;
     this.ws = null;
     this.reconnectInterval = null;
-    this.bufferSize = 1024 * 1024;
+    // Upper bound on a single WebSocket Input message (raw bytes, before
+    // base64). Server updates this via SetBufferSize; anything larger gets
+    // chunked. Kept conservative so an unfriendly server default still works.
+    this.bufferSize = 64 * 1024;
     this.inCopyMode = false;
     this.layout = null;
     this.pendingSessionSwitch = null;
@@ -153,9 +156,7 @@ class WebTmux {
           if (text) {
             // Bail out of copy mode so tmux doesn't swallow the paste.
             this.ensureNormalMode();
-            const bytes = this.encoder.encode(text);
-            const binary = String.fromCharCode(...bytes);
-            this.sendMessage(MSG.Input, btoa(binary));
+            this.sendInput(text);
           }
         }).catch(err => {
           console.warn('Failed to paste:', err);
@@ -175,8 +176,7 @@ class WebTmux {
       if (arrowMap[ev.key]) {
         // Send raw CSI sequence
         const seq = arrowMap[ev.key];
-        const binary = String.fromCharCode(...[...seq].map(c => c.charCodeAt(0)));
-        this.sendMessage(MSG.Input, btoa(binary));
+        this.sendInput(seq);
         return false; // Prevent xterm.js default handling
       }
 
@@ -190,8 +190,7 @@ class WebTmux {
         };
         const key = ev.key.toLowerCase();
         if (ctrlMap[key]) {
-          const binary = String.fromCharCode(ctrlMap[key].charCodeAt(0));
-          this.sendMessage(MSG.Input, btoa(binary));
+          this.sendInput(ctrlMap[key]);
           return false;
         }
       }
@@ -206,10 +205,7 @@ class WebTmux {
       if (this.inCopyMode) {
         this.ensureNormalMode();
       }
-      // Encode string to bytes, then to base64 (matches original gotty)
-      const bytes = this.encoder.encode(data);
-      const binary = String.fromCharCode(...bytes);
-      this.sendMessage(MSG.Input, btoa(binary));
+      this.sendInput(data);
     });
 
     // Setup touch/scroll handling for copy mode
@@ -509,10 +505,45 @@ class WebTmux {
   // Used by sidebar shortcuts like "Connect with GitHub".
   pasteToTerminal(text) {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
-    const bytes = this.encoder.encode(text);
-    const binary = String.fromCharCode(...bytes);
-    this.sendMessage(MSG.Input, btoa(binary));
+    this.sendInput(text);
     this.terminal.focus();
+  }
+
+  // Send terminal input as one or more Input messages, chunking to stay
+  // under the server's buffer. Base64 grows the payload by ~33%, and the
+  // server also reserves 1 byte for the message-type prefix.
+  sendInput(data) {
+    if (!data) return;
+    const bytes = this.encoder.encode(data);
+    // Leave generous headroom: base64 growth (4/3) plus a few bytes.
+    const maxChunk = Math.max(512, Math.floor((this.bufferSize - 16) * 3 / 4));
+
+    if (bytes.length <= maxChunk) {
+      this.sendMessage(MSG.Input, this.bytesToBase64(bytes));
+      return;
+    }
+
+    // Chunk large pastes and pace them so the PTY input buffer can drain.
+    let offset = 0;
+    const sendNext = () => {
+      if (offset >= bytes.length) return;
+      if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
+      const end = Math.min(offset + maxChunk, bytes.length);
+      this.sendMessage(MSG.Input, this.bytesToBase64(bytes.subarray(offset, end)));
+      offset = end;
+      if (offset < bytes.length) setTimeout(sendNext, 10);
+    };
+    sendNext();
+  }
+
+  bytesToBase64(bytes) {
+    // Chunked apply avoids "Maximum call stack size exceeded" for big inputs.
+    let binary = '';
+    const step = 0x8000;
+    for (let i = 0; i < bytes.length; i += step) {
+      binary += String.fromCharCode.apply(null, bytes.subarray(i, i + step));
+    }
+    return btoa(binary);
   }
 
   enterCopyMode() {

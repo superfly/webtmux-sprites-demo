@@ -2,9 +2,9 @@ package server
 
 import (
 	"io"
+	"log"
 
 	"github.com/gorilla/websocket"
-	"github.com/pkg/errors"
 )
 
 type wsWrapper struct {
@@ -32,10 +32,17 @@ func (wsw *wsWrapper) Read(p []byte) (n int, err error) {
 		}
 
 		b, err := io.ReadAll(reader)
+		if err != nil {
+			return 0, err
+		}
 		if len(b) > len(p) {
-			return 0, errors.Wrapf(err, "Client message exceeded buffer size")
+			// Drop oversized messages instead of tearing down the tty. The
+			// client is expected to chunk large pastes to stay under the
+			// buffer size we advertised via SetBufferSize.
+			log.Printf("webtty: dropping oversized client message (%d bytes, buffer=%d)", len(b), len(p))
+			continue
 		}
 		n = copy(p, b)
-		return n, err
+		return n, nil
 	}
 }

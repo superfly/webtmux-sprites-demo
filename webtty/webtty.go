@@ -47,7 +47,9 @@ func New(masterConn Master, slave Slave, options ...Option) (*WebTTY, error) {
 		columns:     0,
 		rows:        0,
 
-		bufferSize: 1024,
+		// 64KB is enough for a typical paste (base64-encoded) to arrive as a
+		// single WebSocket message. Larger pastes are chunked by the client.
+		bufferSize: 64 * 1024,
 		decoder:    &NullCodec{},
 	}
 
