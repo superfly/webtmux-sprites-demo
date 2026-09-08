@@ -48,6 +48,7 @@ class WebTmux {
     this.pendingSessionSwitch = null;
     this.oscBuffer = ''; // Buffer for OSC sequence detection
     this.urlScanBuffer = ''; // Rolling buffer to detect URLs split across chunks
+    this.scrollOffset = 0; // Lines scrolled up from bottom (client-side tracking)
     // Dedup key: `${name}:${url}:${code||''}`. Persisted in sessionStorage so
     // page refreshes (which replay tmux scrollback) don't re-open browser tabs.
     // Cleared automatically when the tab is closed.
@@ -150,6 +151,8 @@ class WebTmux {
         ev.preventDefault(); // Prevent browser's native paste
         navigator.clipboard.readText().then(text => {
           if (text) {
+            // Bail out of copy mode so tmux doesn't swallow the paste.
+            this.ensureNormalMode();
             const bytes = this.encoder.encode(text);
             const binary = String.fromCharCode(...bytes);
             this.sendMessage(MSG.Input, btoa(binary));
@@ -197,10 +200,11 @@ class WebTmux {
     });
 
     this.terminal.onData((data) => {
-      if (this.inCopyMode && data.length === 1) {
-        // Exit copy mode on any key press (except scroll keys)
-        this.sendMessage(MSG.TmuxCopyMode, '0');
-        this.inCopyMode = false;
+      // Any typed / pasted input while in copy mode should return to normal
+      // mode first, otherwise tmux consumes the input as copy-mode key
+      // bindings and the terminal appears frozen.
+      if (this.inCopyMode) {
+        this.ensureNormalMode();
       }
       // Encode string to bytes, then to base64 (matches original gotty)
       const bytes = this.encoder.encode(data);
@@ -232,19 +236,14 @@ class WebTmux {
       const threshold = 30;
 
       if (Math.abs(deltaY) > threshold) {
-        if (!this.inCopyMode) {
-          this.sendMessage(MSG.TmuxCopyMode, '1');
-          this.inCopyMode = true;
-        }
-
         const lines = Math.floor(Math.abs(deltaY) / 20);
         if (lines > 0) {
           // Swipe up (deltaY > 0) = scroll DOWN in history (show newer)
           // Swipe down (deltaY < 0) = scroll UP in history (show older)
           if (deltaY > 0) {
-            this.sendMessage(MSG.TmuxScrollDown, String(lines));
+            this.scrollDownBy(lines);
           } else {
-            this.sendMessage(MSG.TmuxScrollUp, String(lines));
+            this.scrollUpBy(lines);
           }
           touchStartY = e.touches[0].clientY;
         }
@@ -253,28 +252,88 @@ class WebTmux {
 
     // Mouse wheel for desktop scroll -> copy mode
     this.terminal.attachCustomWheelEventHandler((event) => {
-      // Only intercept scroll up (entering history) - deltaY < 0 = wheel up
+      const lines = Math.max(1, Math.floor(Math.abs(event.deltaY) / 50));
       if (event.deltaY < 0) {
-        if (!this.inCopyMode) {
-          this.sendMessage(MSG.TmuxCopyMode, '1');
-          this.inCopyMode = true;
-        }
+        // Wheel up: enter/stay in copy mode and scroll into history.
+        this.scrollUpBy(lines);
+        return false;
       }
-
-      if (this.inCopyMode) {
-        const lines = Math.max(1, Math.floor(Math.abs(event.deltaY) / 50));
-        // Wheel up (deltaY < 0) = scroll UP in tmux (show older history)
-        // Wheel down (deltaY > 0) = scroll DOWN in tmux (show newer)
-        if (event.deltaY < 0) {
-          this.sendMessage(MSG.TmuxScrollUp, String(lines));
-        } else {
-          this.sendMessage(MSG.TmuxScrollDown, String(lines));
-        }
-        return false; // Prevent default scroll
+      if (event.deltaY > 0 && this.inCopyMode) {
+        // Wheel down while browsing history: scroll toward the bottom, and
+        // auto-exit copy mode once we've caught back up so the next keystroke
+        // isn't captured by tmux.
+        this.scrollDownBy(lines);
+        return false;
       }
-
       return true; // Allow normal handling when not in copy mode
     });
+  }
+
+  // --- copy/scroll mode helpers ---
+
+  scrollUpBy(lines) {
+    if (!this.inCopyMode) {
+      this.sendMessage(MSG.TmuxCopyMode, '1');
+      this.inCopyMode = true;
+      this.showScrollIndicator();
+    }
+    this.scrollOffset += lines;
+    this.sendMessage(MSG.TmuxScrollUp, String(lines));
+  }
+
+  scrollDownBy(lines) {
+    if (!this.inCopyMode) return;
+    this.sendMessage(MSG.TmuxScrollDown, String(lines));
+    this.scrollOffset = Math.max(0, this.scrollOffset - lines);
+    if (this.scrollOffset === 0) {
+      this.ensureNormalMode();
+    }
+  }
+
+  // Cancel copy mode and reset scroll tracking. Safe to call when already out.
+  ensureNormalMode() {
+    if (this.inCopyMode) {
+      this.sendMessage(MSG.TmuxCopyMode, '0');
+      this.inCopyMode = false;
+    }
+    this.scrollOffset = 0;
+    this.hideScrollIndicator();
+  }
+
+  showScrollIndicator() {
+    let el = document.getElementById('scroll-mode-indicator');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'scroll-mode-indicator';
+      el.textContent = 'Scroll mode — type or scroll down to exit';
+      el.style.cssText = [
+        'position:fixed',
+        'top:10px',
+        'left:50%',
+        'transform:translateX(-50%)',
+        'background:rgba(192,132,252,0.15)',
+        'border:1px solid #c084fc',
+        'color:#e0c9ff',
+        'padding:4px 10px',
+        'border-radius:12px',
+        'font-family:system-ui,-apple-system,sans-serif',
+        'font-size:11px',
+        'font-weight:500',
+        'pointer-events:auto',
+        'z-index:9998',
+        'cursor:pointer',
+        'user-select:none',
+        'box-shadow:0 2px 8px rgba(0,0,0,0.3)',
+      ].join(';');
+      el.addEventListener('click', () => this.ensureNormalMode());
+      document.body.appendChild(el);
+    }
+    el.style.display = 'block';
+  }
+
+  hideScrollIndicator() {
+    const el = document.getElementById('scroll-mode-indicator');
+    if (el) el.style.display = 'none';
   }
 
   connect() {
@@ -388,6 +447,12 @@ class WebTmux {
       case MSG.TmuxModeUpdate:
         const modeState = JSON.parse(payload);
         this.inCopyMode = modeState.inCopyMode;
+        if (!this.inCopyMode) {
+          this.scrollOffset = 0;
+          this.hideScrollIndicator();
+        } else {
+          this.showScrollIndicator();
+        }
         break;
 
       default:
@@ -453,11 +518,11 @@ class WebTmux {
   enterCopyMode() {
     this.sendMessage(MSG.TmuxCopyMode, '1');
     this.inCopyMode = true;
+    this.showScrollIndicator();
   }
 
   exitCopyMode() {
-    this.sendMessage(MSG.TmuxCopyMode, '0');
-    this.inCopyMode = false;
+    this.ensureNormalMode();
   }
 
   // Detect known browser-based auth flows in terminal output and auto-open them.
