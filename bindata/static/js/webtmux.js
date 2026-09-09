@@ -7,6 +7,7 @@ import { WebLinksAddon } from '@xterm/addon-web-links';
 // Import components
 import './components/sidebar.js';
 import './components/mobile-controls.js';
+import './components/agents-modal.js';
 
 // Protocol message types (must match Go constants)
 const MSG = {
