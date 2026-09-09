@@ -7,6 +7,8 @@ import { WebLinksAddon } from '@xterm/addon-web-links';
 // Import components
 import './components/sidebar.js';
 import './components/mobile-controls.js';
+import './components/agents-modal.js';
+import './components/terminal-banner.js';
 
 // Protocol message types (must match Go constants)
 const MSG = {
@@ -42,12 +44,16 @@ class WebTmux {
     this.fitAddon = null;
     this.ws = null;
     this.reconnectInterval = null;
-    this.bufferSize = 1024 * 1024;
+    // Upper bound on a single WebSocket Input message (raw bytes, before
+    // base64). Server updates this via SetBufferSize; anything larger gets
+    // chunked. Kept conservative so an unfriendly server default still works.
+    this.bufferSize = 64 * 1024;
     this.inCopyMode = false;
     this.layout = null;
     this.pendingSessionSwitch = null;
     this.oscBuffer = ''; // Buffer for OSC sequence detection
     this.urlScanBuffer = ''; // Rolling buffer to detect URLs split across chunks
+    this.scrollOffset = 0; // Lines scrolled up from bottom (client-side tracking)
     // Dedup key: `${name}:${url}:${code||''}`. Persisted in sessionStorage so
     // page refreshes (which replay tmux scrollback) don't re-open browser tabs.
     // Cleared automatically when the tab is closed.
@@ -150,9 +156,9 @@ class WebTmux {
         ev.preventDefault(); // Prevent browser's native paste
         navigator.clipboard.readText().then(text => {
           if (text) {
-            const bytes = this.encoder.encode(text);
-            const binary = String.fromCharCode(...bytes);
-            this.sendMessage(MSG.Input, btoa(binary));
+            // Bail out of copy mode so tmux doesn't swallow the paste.
+            this.ensureNormalMode();
+            this.sendInput(text);
           }
         }).catch(err => {
           console.warn('Failed to paste:', err);
@@ -172,8 +178,7 @@ class WebTmux {
       if (arrowMap[ev.key]) {
         // Send raw CSI sequence
         const seq = arrowMap[ev.key];
-        const binary = String.fromCharCode(...[...seq].map(c => c.charCodeAt(0)));
-        this.sendMessage(MSG.Input, btoa(binary));
+        this.sendInput(seq);
         return false; // Prevent xterm.js default handling
       }
 
@@ -187,8 +192,7 @@ class WebTmux {
         };
         const key = ev.key.toLowerCase();
         if (ctrlMap[key]) {
-          const binary = String.fromCharCode(ctrlMap[key].charCodeAt(0));
-          this.sendMessage(MSG.Input, btoa(binary));
+          this.sendInput(ctrlMap[key]);
           return false;
         }
       }
@@ -197,15 +201,13 @@ class WebTmux {
     });
 
     this.terminal.onData((data) => {
-      if (this.inCopyMode && data.length === 1) {
-        // Exit copy mode on any key press (except scroll keys)
-        this.sendMessage(MSG.TmuxCopyMode, '0');
-        this.inCopyMode = false;
+      // Any typed / pasted input while in copy mode should return to normal
+      // mode first, otherwise tmux consumes the input as copy-mode key
+      // bindings and the terminal appears frozen.
+      if (this.inCopyMode) {
+        this.ensureNormalMode();
       }
-      // Encode string to bytes, then to base64 (matches original gotty)
-      const bytes = this.encoder.encode(data);
-      const binary = String.fromCharCode(...bytes);
-      this.sendMessage(MSG.Input, btoa(binary));
+      this.sendInput(data);
     });
 
     // Setup touch/scroll handling for copy mode
@@ -232,19 +234,14 @@ class WebTmux {
       const threshold = 30;
 
       if (Math.abs(deltaY) > threshold) {
-        if (!this.inCopyMode) {
-          this.sendMessage(MSG.TmuxCopyMode, '1');
-          this.inCopyMode = true;
-        }
-
         const lines = Math.floor(Math.abs(deltaY) / 20);
         if (lines > 0) {
           // Swipe up (deltaY > 0) = scroll DOWN in history (show newer)
           // Swipe down (deltaY < 0) = scroll UP in history (show older)
           if (deltaY > 0) {
-            this.sendMessage(MSG.TmuxScrollDown, String(lines));
+            this.scrollDownBy(lines);
           } else {
-            this.sendMessage(MSG.TmuxScrollUp, String(lines));
+            this.scrollUpBy(lines);
           }
           touchStartY = e.touches[0].clientY;
         }
@@ -253,28 +250,88 @@ class WebTmux {
 
     // Mouse wheel for desktop scroll -> copy mode
     this.terminal.attachCustomWheelEventHandler((event) => {
-      // Only intercept scroll up (entering history) - deltaY < 0 = wheel up
+      const lines = Math.max(1, Math.floor(Math.abs(event.deltaY) / 50));
       if (event.deltaY < 0) {
-        if (!this.inCopyMode) {
-          this.sendMessage(MSG.TmuxCopyMode, '1');
-          this.inCopyMode = true;
-        }
+        // Wheel up: enter/stay in copy mode and scroll into history.
+        this.scrollUpBy(lines);
+        return false;
       }
-
-      if (this.inCopyMode) {
-        const lines = Math.max(1, Math.floor(Math.abs(event.deltaY) / 50));
-        // Wheel up (deltaY < 0) = scroll UP in tmux (show older history)
-        // Wheel down (deltaY > 0) = scroll DOWN in tmux (show newer)
-        if (event.deltaY < 0) {
-          this.sendMessage(MSG.TmuxScrollUp, String(lines));
-        } else {
-          this.sendMessage(MSG.TmuxScrollDown, String(lines));
-        }
-        return false; // Prevent default scroll
+      if (event.deltaY > 0 && this.inCopyMode) {
+        // Wheel down while browsing history: scroll toward the bottom, and
+        // auto-exit copy mode once we've caught back up so the next keystroke
+        // isn't captured by tmux.
+        this.scrollDownBy(lines);
+        return false;
       }
-
       return true; // Allow normal handling when not in copy mode
     });
+  }
+
+  // --- copy/scroll mode helpers ---
+
+  scrollUpBy(lines) {
+    if (!this.inCopyMode) {
+      this.sendMessage(MSG.TmuxCopyMode, '1');
+      this.inCopyMode = true;
+      this.showScrollIndicator();
+    }
+    this.scrollOffset += lines;
+    this.sendMessage(MSG.TmuxScrollUp, String(lines));
+  }
+
+  scrollDownBy(lines) {
+    if (!this.inCopyMode) return;
+    this.sendMessage(MSG.TmuxScrollDown, String(lines));
+    this.scrollOffset = Math.max(0, this.scrollOffset - lines);
+    if (this.scrollOffset === 0) {
+      this.ensureNormalMode();
+    }
+  }
+
+  // Cancel copy mode and reset scroll tracking. Safe to call when already out.
+  ensureNormalMode() {
+    if (this.inCopyMode) {
+      this.sendMessage(MSG.TmuxCopyMode, '0');
+      this.inCopyMode = false;
+    }
+    this.scrollOffset = 0;
+    this.hideScrollIndicator();
+  }
+
+  showScrollIndicator() {
+    let el = document.getElementById('scroll-mode-indicator');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'scroll-mode-indicator';
+      el.textContent = 'Scroll mode — type or scroll down to exit';
+      el.style.cssText = [
+        'position:fixed',
+        'top:10px',
+        'left:50%',
+        'transform:translateX(-50%)',
+        'background:rgba(192,132,252,0.15)',
+        'border:1px solid #c084fc',
+        'color:#e0c9ff',
+        'padding:4px 10px',
+        'border-radius:12px',
+        'font-family:system-ui,-apple-system,sans-serif',
+        'font-size:11px',
+        'font-weight:500',
+        'pointer-events:auto',
+        'z-index:9998',
+        'cursor:pointer',
+        'user-select:none',
+        'box-shadow:0 2px 8px rgba(0,0,0,0.3)',
+      ].join(';');
+      el.addEventListener('click', () => this.ensureNormalMode());
+      document.body.appendChild(el);
+    }
+    el.style.display = 'block';
+  }
+
+  hideScrollIndicator() {
+    const el = document.getElementById('scroll-mode-indicator');
+    if (el) el.style.display = 'none';
   }
 
   connect() {
@@ -388,6 +445,12 @@ class WebTmux {
       case MSG.TmuxModeUpdate:
         const modeState = JSON.parse(payload);
         this.inCopyMode = modeState.inCopyMode;
+        if (!this.inCopyMode) {
+          this.scrollOffset = 0;
+          this.hideScrollIndicator();
+        } else {
+          this.showScrollIndicator();
+        }
         break;
 
       default:
@@ -444,20 +507,55 @@ class WebTmux {
   // Used by sidebar shortcuts like "Connect with GitHub".
   pasteToTerminal(text) {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
-    const bytes = this.encoder.encode(text);
-    const binary = String.fromCharCode(...bytes);
-    this.sendMessage(MSG.Input, btoa(binary));
+    this.sendInput(text);
     this.terminal.focus();
+  }
+
+  // Send terminal input as one or more Input messages, chunking to stay
+  // under the server's buffer. Base64 grows the payload by ~33%, and the
+  // server also reserves 1 byte for the message-type prefix.
+  sendInput(data) {
+    if (!data) return;
+    const bytes = this.encoder.encode(data);
+    // Leave generous headroom: base64 growth (4/3) plus a few bytes.
+    const maxChunk = Math.max(512, Math.floor((this.bufferSize - 16) * 3 / 4));
+
+    if (bytes.length <= maxChunk) {
+      this.sendMessage(MSG.Input, this.bytesToBase64(bytes));
+      return;
+    }
+
+    // Chunk large pastes and pace them so the PTY input buffer can drain.
+    let offset = 0;
+    const sendNext = () => {
+      if (offset >= bytes.length) return;
+      if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
+      const end = Math.min(offset + maxChunk, bytes.length);
+      this.sendMessage(MSG.Input, this.bytesToBase64(bytes.subarray(offset, end)));
+      offset = end;
+      if (offset < bytes.length) setTimeout(sendNext, 10);
+    };
+    sendNext();
+  }
+
+  bytesToBase64(bytes) {
+    // Chunked apply avoids "Maximum call stack size exceeded" for big inputs.
+    let binary = '';
+    const step = 0x8000;
+    for (let i = 0; i < bytes.length; i += step) {
+      binary += String.fromCharCode.apply(null, bytes.subarray(i, i + step));
+    }
+    return btoa(binary);
   }
 
   enterCopyMode() {
     this.sendMessage(MSG.TmuxCopyMode, '1');
     this.inCopyMode = true;
+    this.showScrollIndicator();
   }
 
   exitCopyMode() {
-    this.sendMessage(MSG.TmuxCopyMode, '0');
-    this.inCopyMode = false;
+    this.ensureNormalMode();
   }
 
   // Detect known browser-based auth flows in terminal output and auto-open them.
