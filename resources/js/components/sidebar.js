@@ -804,11 +804,17 @@ class WebtmuxSidebar extends LitElement {
         steps: [
           {
             title: 'Register your server as a service',
-            body: html`
-              <p>From inside the Sprite, define a Python server that owns the Sprite's HTTP URL:</p>
-              ${this.renderCmd('sprite-env services create web --cmd python3 --args "-m,http.server,8080" --http-port 8080')}
-              <p><code>--http-port</code> routes the Sprite's URL to port 8080 and wakes the service on request.</p>
-            `,
+            body: trial
+              ? html`
+                  <p>From inside the Sprite, define a Python server that listens on port 8080:</p>
+                  ${this.renderCmd('sprite-env services create web --cmd python3 --args "-m,http.server,8080"')}
+                  <p>Requests to the root of this Sprite's URL will reach it automatically.</p>
+                `
+              : html`
+                  <p>From inside the Sprite, define a Python server that owns the Sprite's HTTP URL:</p>
+                  ${this.renderCmd('sprite-env services create web --cmd python3 --args "-m,http.server,8080" --http-port 8080')}
+                  <p><code>--http-port</code> routes the Sprite's URL to port 8080 and wakes the service on request.</p>
+                `,
           },
           {
             title: 'Verify it\u2019s running',

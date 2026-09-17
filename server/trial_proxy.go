@@ -138,8 +138,7 @@ var trialSetupTemplate = template.Must(template.New("trial-setup").Parse(`<!doct
       <li>Register your app as a service, for example:
         <pre>sprite-env services create web \
   --cmd python3 \
-  --args "-m,http.server,{{.Port}}" \
-  --http-port {{.Port}}</pre>
+  --args "-m,http.server,{{.Port}}"</pre>
       </li>
       <li>Reload this page — your app takes over.</li>
     </ol>
@@ -150,6 +149,9 @@ var trialSetupTemplate = template.Must(template.New("trial-setup").Parse(`<!doct
 
 func (server *Server) serveTrialSetupPage(w http.ResponseWriter, terminalPath string) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	// Signal to the terminal UI that this is our synthetic setup page and
+	// not an actual response from the user's app.
+	w.Header().Set("X-Webtmux-Trial-Setup", "1")
 	w.WriteHeader(http.StatusServiceUnavailable)
 	_ = trialSetupTemplate.Execute(w, map[string]interface{}{
 		"Port":         server.options.TrialAppPort,
