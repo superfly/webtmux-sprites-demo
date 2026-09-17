@@ -282,6 +282,8 @@ func (server *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
 	lines := []string{
 		"var gotty_term = 'xterm';",
 		"var gotty_ws_query_args = '" + server.options.WSQueryArgs + "';",
+		fmt.Sprintf("window.WEBTMUX_TRIAL = %t;", server.options.Trial),
+		fmt.Sprintf("window.WEBTMUX_TRIAL_APP_PORT = %d;", server.options.TrialAppPort),
 	}
 
 	w.Write([]byte(strings.Join(lines, "\n")))

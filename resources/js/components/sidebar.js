@@ -17,7 +17,7 @@ class WebtmuxSidebar extends LitElement {
       display: block;
       width: 300px;
       background: #16213e;
-      border-left: 1px solid #0f3460;
+      border-right: 1px solid #0f3460;
       padding: 12px;
       overflow-y: auto;
       transition: width 0.2s, padding 0.2s;
@@ -33,6 +33,55 @@ class WebtmuxSidebar extends LitElement {
 
     .tutorials {
       margin-bottom: 16px;
+    }
+
+    .trial-notice {
+      background: rgba(233, 69, 96, 0.1);
+      border: 1px solid rgba(233, 69, 96, 0.4);
+      border-radius: 6px;
+      padding: 10px 12px;
+      margin: 0 0 14px 0;
+      color: #f8c8d0;
+      font-size: 11px;
+      line-height: 1.45;
+    }
+
+    .trial-notice strong {
+      color: #ffb3c0;
+    }
+
+    .trial-notice .why {
+      color: #b4a7d6;
+      margin-top: 6px;
+      display: block;
+    }
+
+    .ask-agent-btn {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      background: linear-gradient(135deg, #c084fc, #a855f7);
+      color: #17141f;
+      border: none;
+      border-radius: 6px;
+      padding: 10px 12px;
+      font-size: 13px;
+      font-family: system-ui, -apple-system, sans-serif;
+      font-weight: 600;
+      cursor: pointer;
+      margin-bottom: 14px;
+      transition: filter 0.15s;
+    }
+
+    .ask-agent-btn:hover {
+      filter: brightness(1.1);
+    }
+
+    .ask-agent-btn svg {
+      width: 16px;
+      height: 16px;
     }
 
     .tutorials-header {
@@ -627,6 +676,10 @@ class WebtmuxSidebar extends LitElement {
     }
   }
 
+  openAgentsModal() {
+    window.dispatchEvent(new CustomEvent('webtmux-open-agents-modal'));
+  }
+
   setStep(n) {
     this.step = this.step === n ? 0 : n;
   }
@@ -665,13 +718,34 @@ class WebtmuxSidebar extends LitElement {
   }
 
   renderTutorial() {
-    const tutorials = [
-      {
-        id: 'getting-started',
-        icon: '🚀',
-        title: 'Getting started',
-        intro: 'Spin up a persistent cloud VM and serve HTTP from it.',
-        steps: [
+    const trial = !!window.WEBTMUX_TRIAL;
+    const gettingStartedSteps = trial
+      ? [
+          {
+            title: 'Look around your Sprite',
+            body: html`
+              <p>You're already inside a trial Sprite — a persistent Linux environment with Python, Node, Go, and more preinstalled. Try:</p>
+              ${this.renderCmd('ls /home/sprite')}
+              ${this.renderCmd('python3 --version')}
+            `,
+          },
+          {
+            title: 'Start something on port 8080',
+            body: html`
+              <p>Anything you serve on port <code>8080</code> shows up at your Sprite's public URL. Quick test with Python:</p>
+              ${this.renderCmd('python3 -m http.server 8080')}
+            `,
+          },
+          {
+            title: 'Visit your Sprite URL',
+            body: html`
+              <p>Open the root of this URL in a new tab — requests get proxied to whatever you're running on port 8080.</p>
+              <p><a href="/" target="_blank" rel="noopener">Open my Sprite URL →</a></p>
+              <p>To keep serving after you close this terminal, jump to the <em>Run a server forever</em> tutorial below.</p>
+            `,
+          },
+        ]
+      : [
           {
             title: 'Log in to Sprites',
             body: html`
@@ -706,7 +780,17 @@ class WebtmuxSidebar extends LitElement {
               ${this.renderCmd('sprite config update --url-auth public')}
             `,
           },
-        ],
+        ];
+
+    const tutorials = [
+      {
+        id: 'getting-started',
+        icon: '🚀',
+        title: 'Getting started',
+        intro: trial
+          ? html`You're in a <strong>trial Sprite</strong>. Host something on port 8080 and it shows up at the root of this URL.`
+          : 'Spin up a persistent cloud VM and serve HTTP from it.',
+        steps: gettingStartedSteps,
       },
       {
         id: 'services',
@@ -780,18 +864,18 @@ class WebtmuxSidebar extends LitElement {
             `,
           },
           {
+            title: 'Peek without restoring',
+            body: html`
+              <p>The last five checkpoints are mounted read-only — diff them against the current state:</p>
+              ${this.renderCmd('diff /.sprite/checkpoints/v1/etc/hosts /etc/hosts')}
+            `,
+          },
+          {
             title: 'Roll back',
             body: html`
               <p>Restore replaces the filesystem overlay and restarts the environment:</p>
               ${this.renderCmd('sprite-env checkpoints restore v1')}
               <p><strong>Destructive:</strong> anything not in the checkpoint is gone. Take a fresh checkpoint first if unsure.</p>
-            `,
-          },
-          {
-            title: 'Peek without restoring',
-            body: html`
-              <p>The last five checkpoints are mounted read-only — diff them against the current state:</p>
-              ${this.renderCmd('diff /.sprite/checkpoints/v1/etc/hosts /etc/hosts')}
             `,
           },
         ],
@@ -802,8 +886,26 @@ class WebtmuxSidebar extends LitElement {
       <div class="tutorials">
         <div class="tutorials-header">
           <span class="tutorial-badge">TUTORIALS</span>
-          <h2>Try Fly.io Sprites</h2>
+          <h2>${trial ? 'Trial sprite' : 'Try Fly.io Sprites'}</h2>
         </div>
+
+        ${trial ? html`
+          <div class="trial-notice">
+            <strong>⏳ Auto-delete in 2 hours</strong>
+            This trial sprite will be automatically deleted in <strong>2 hours</strong> unless a
+            credit card is added to your account.
+            <span class="why">We do this to keep bots from spinning up free sprites in bulk.</span>
+          </div>
+        ` : ''}
+
+        <button class="ask-agent-btn" @click=${this.openAgentsModal}>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 2a2 2 0 0 1 2 2v2h4a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2h-1v3a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2v-3H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4V4a2 2 0 0 1 2-2z"/>
+            <circle cx="9" cy="10" r="1"/>
+            <circle cx="15" cy="10" r="1"/>
+          </svg>
+          Ask your agent
+        </button>
 
         ${tutorials.map(t => {
           const tOpen = this.activeTutorial === t.id;

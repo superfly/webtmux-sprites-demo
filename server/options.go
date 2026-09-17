@@ -35,6 +35,11 @@ type Options struct {
 	EnableWebGL         bool   `hcl:"enable_webgl" flagName:"enable-webgl" flagDescribe:"Enable WebGL renderer" default:"true"`
 	Quiet               bool   `hcl:"quiet" flagName:"quiet" flagDescribe:"Don't log" default:"false"`
 
+	// Trial-sprite mode: mount the terminal under /terminal/ and reverse-proxy
+	// all other paths to the user's app on TrialAppPort.
+	Trial        bool `hcl:"trial" flagName:"trial" flagDescribe:"Enable trial-sprite mode (mounts terminal at /terminal/ and proxies other paths to the user's app)" default:"false"`
+	TrialAppPort int  `hcl:"trial_app_port" flagName:"trial-app-port" flagDescribe:"Port on localhost to proxy non-terminal requests to in trial mode" default:"8080"`
+
 	TitleVariables map[string]interface{}
 }
 

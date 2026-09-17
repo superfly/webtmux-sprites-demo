@@ -16,10 +16,14 @@ const AGENTS = [
   { name: 'Pi',          cmd: 'pi' },
 ];
 
+// Fire this to pop the modal open showing only the agent grid, no matter
+// whether the first-run welcome has been dismissed.
+//   window.dispatchEvent(new CustomEvent('webtmux-open-agents-modal'));
 class WebtmuxAgentsModal extends LitElement {
   static properties = {
     visible: { type: Boolean },
     dontShow: { type: Boolean },
+    mode: { type: String }, // 'welcome' | 'agents'
   };
 
   static styles = css`
@@ -277,7 +281,22 @@ class WebtmuxAgentsModal extends LitElement {
   constructor() {
     super();
     this.dontShow = false;
+    this.mode = 'welcome';
     this.visible = !this.isDismissed();
+    this._onOpenAgents = () => {
+      this.mode = 'agents';
+      this.visible = true;
+    };
+  }
+
+  connectedCallback() {
+    super.connectedCallback();
+    window.addEventListener('webtmux-open-agents-modal', this._onOpenAgents);
+  }
+
+  disconnectedCallback() {
+    window.removeEventListener('webtmux-open-agents-modal', this._onOpenAgents);
+    super.disconnectedCallback();
   }
 
   isDismissed() {
@@ -296,10 +315,14 @@ class WebtmuxAgentsModal extends LitElement {
   }
 
   dismiss() {
-    if (this.dontShow) {
+    // Only persist "don't show again" when the modal was opened as the
+    // first-run welcome. Manual re-opens shouldn't affect that flag.
+    if (this.mode === 'welcome' && this.dontShow) {
       try { localStorage.setItem(STORAGE_KEY, '1'); } catch (e) {}
     }
     this.visible = false;
+    // Reset to welcome so a future first-run render still works.
+    this.mode = 'welcome';
   }
 
   onOverlayClick(e) {
@@ -314,28 +337,61 @@ class WebtmuxAgentsModal extends LitElement {
     }).catch(() => {});
   }
 
+  renderAgentsOnly() {
+    return html`
+      <div class="overlay" @click=${this.onOverlayClick}>
+        <div class="modal" role="dialog" aria-modal="true" aria-labelledby="agents-modal-title">
+          <button class="close" @click=${this.dismiss} aria-label="Close">×</button>
+          <span class="badge">AGENTS</span>
+          <h1 id="agents-modal-title">Ask your agent</h1>
+          <p class="lead">
+            Every Sprite ships with these AI coding agents pre-installed. Launch one and
+            ask it to build and serve something for you.
+          </p>
+
+          <div class="agents">
+            ${AGENTS.map(a => html`
+              <div class="agent">
+                <span class="name">${a.name}</span>
+                <code
+                  title="Click to copy"
+                  @click=${(e) => this.onCommandClick(e, a.cmd)}
+                >${a.cmd}</code>
+              </div>
+            `)}
+          </div>
+          <p class="hint">Click any command to copy it. You can install other agents inside your Sprite too.</p>
+        </div>
+      </div>
+    `;
+  }
+
   render() {
     if (!this.visible) return html``;
+    if (this.mode === 'agents') return this.renderAgentsOnly();
+    const trial = !!window.WEBTMUX_TRIAL;
+    const title = trial ? 'Two ways to try Sprites' : 'Three ways to try Sprites';
+    const lead = trial
+      ? 'Pick whichever fits you. Both end with something running in this persistent cloud VM.'
+      : 'Pick whichever fits you. All three end with something running in a persistent cloud VM you fully control.';
+    const guideBlurb = trial
+      ? html`Step-by-step: serve HTTP on port 8080, run background services, and time-travel with checkpoints.`
+      : html`Step-by-step: log in, create a Sprite, serve HTTP, run background services, and time-travel with checkpoints.`;
+
     return html`
       <div class="overlay" @click=${this.onOverlayClick}>
         <div class="modal" role="dialog" aria-modal="true" aria-labelledby="agents-modal-title">
           <button class="close" @click=${this.dismiss} aria-label="Close">×</button>
           <span class="badge">WELCOME</span>
-          <h1 id="agents-modal-title">Three ways to try Sprites</h1>
-          <p class="lead">
-            Pick whichever fits you. All three end with something running in a persistent
-            cloud VM you fully control.
-          </p>
+          <h1 id="agents-modal-title">${title}</h1>
+          <p class="lead">${lead}</p>
 
           <div class="path primary">
             <div class="path-header">
               <span class="path-num">1</span>
               <h2>Follow the guide in the sidebar</h2>
             </div>
-            <p>
-              Step-by-step: log in, create a Sprite, serve HTTP, run background services,
-              and time-travel with checkpoints.
-            </p>
+            <p>${guideBlurb}</p>
             <button class="path-cta" @click=${this.dismiss}>
               Show me the guide →
             </button>
@@ -364,25 +420,27 @@ class WebtmuxAgentsModal extends LitElement {
             <p class="hint">Click any command to copy it. You can install other agents inside your Sprite too.</p>
           </div>
 
-          <div class="path">
-            <div class="path-header">
-              <span class="path-num">3</span>
-              <h2>Use Sprites from an agent on your machine</h2>
+          ${trial ? '' : html`
+            <div class="path">
+              <div class="path-header">
+                <span class="path-num">3</span>
+                <h2>Use Sprites from an agent on your machine</h2>
+              </div>
+              <p>
+                Already using Claude Code, Cursor, or another agent locally? Drop in our
+                <a href="https://github.com/superfly/skills" target="_blank" rel="noopener">Sprites skill</a>
+                and it can create and manage Sprites for you from anywhere.
+              </p>
+              <a
+                class="path-cta"
+                href="https://github.com/superfly/skills"
+                target="_blank"
+                rel="noopener"
+              >
+                Get the skill →
+              </a>
             </div>
-            <p>
-              Already using Claude Code, Cursor, or another agent locally? Drop in our
-              <a href="https://github.com/superfly/skills" target="_blank" rel="noopener">Sprites skill</a>
-              and it can create and manage Sprites for you from anywhere.
-            </p>
-            <a
-              class="path-cta"
-              href="https://github.com/superfly/skills"
-              target="_blank"
-              rel="noopener"
-            >
-              Get the skill →
-            </a>
-          </div>
+          `}
 
           <div class="footer">
             <label class="dont-show">

@@ -56,6 +56,15 @@ class WebtmuxTerminalBanner extends LitElement {
       border-color: #c084fc;
     }
 
+    .msg a {
+      color: #c084fc;
+      text-decoration: underline;
+    }
+
+    .msg a:hover {
+      color: #d5a3ff;
+    }
+
     .close {
       flex-shrink: 0;
       background: transparent;
@@ -127,13 +136,23 @@ class WebtmuxTerminalBanner extends LitElement {
 
   render() {
     if (!this.visible) return html``;
+    const trial = !!window.WEBTMUX_TRIAL;
     return html`
       <div class="bar" role="status">
         <span class="icon">💡</span>
         <span class="msg">
-          <strong>Web Terminal</strong> is itself a Sprite that hosts a terminal so you can try things
-          without leaving the browser. To host your own project, create a fresh Sprite with
-          <code @click=${this.copyCreateCmd} title="Click to copy">sprite create</code>.
+          ${trial
+            ? html`
+                You're in a <strong>trial Sprite</strong>. Whatever you serve on port
+                <code>${window.WEBTMUX_TRIAL_APP_PORT || 8080}</code> shows up
+                <a href="/" target="_blank" rel="noopener">at the root of this URL</a>
+                — the web terminal itself lives at <code>/terminal</code>.
+              `
+            : html`
+                <strong>Web Terminal</strong> is itself a Sprite that hosts a terminal so you can try
+                things without leaving the browser. To host your own project, create a fresh Sprite
+                with <code @click=${this.copyCreateCmd} title="Click to copy">sprite create</code>.
+              `}
         </span>
         <button class="close" @click=${this.dismiss} aria-label="Dismiss">×</button>
       </div>

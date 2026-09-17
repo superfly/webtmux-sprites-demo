@@ -171,6 +171,13 @@ func (server *Server) Run(ctx context.Context, options ...RunOption) error {
 	if server.options.EnableRandomUrl {
 		path = "/" + randomstring.Generate(server.options.RandomUrlLength) + "/"
 	}
+	if server.options.Trial {
+		if path != "/" {
+			log.Printf("trial mode: overriding --path=%q with /terminal/", path)
+		}
+		path = "/terminal/"
+		log.Printf("Trial mode enabled: terminal served under %s, other paths proxied to localhost:%d", path, server.options.TrialAppPort)
+	}
 	if !strings.HasPrefix(path, "/") {
 		path = "/" + path
 	}
@@ -287,8 +294,17 @@ func (server *Server) setupHandlers(ctx context.Context, cancel context.CancelFu
 	siteHandler = server.wrapLogger(withGz)
 
 	wsMux := http.NewServeMux()
-	wsMux.Handle("/", siteHandler)
 	wsMux.HandleFunc(pathPrefix+"ws", server.generateHandleWS(ctx, cancel, counter))
+
+	if server.options.Trial {
+		// Trial mode: terminal is scoped to pathPrefix (e.g. /terminal/), and
+		// every other path is reverse-proxied to the user's app. The proxy
+		// falls back to a setup page when nothing is listening.
+		wsMux.Handle(pathPrefix, siteHandler)
+		wsMux.Handle("/", server.trialProxyHandler(pathPrefix))
+	} else {
+		wsMux.Handle("/", siteHandler)
+	}
 	siteHandler = http.Handler(wsMux)
 
 	return siteHandler
