@@ -726,7 +726,7 @@ class WebtmuxSidebar extends LitElement {
             title: 'Look around your Sprite',
             body: html`
               <p>You're already inside a trial Sprite — a persistent Linux environment with Python, Node, Go, and more preinstalled. Try:</p>
-              ${this.renderCmd('ls /home/sprite')}
+              ${this.renderCmd('ls -lah /home/sprite')}
               ${this.renderCmd('python3 --version')}
             `,
           },
