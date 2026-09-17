@@ -89,6 +89,7 @@ class WebtmuxSidebar extends LitElement {
       align-items: center;
       gap: 6px;
       margin-bottom: 12px;
+      margin-left: 32px; /* clear the toggle button */
     }
 
     .tutorial-badge {
@@ -442,7 +443,7 @@ class WebtmuxSidebar extends LitElement {
     .toggle-btn {
       position: absolute;
       top: 8px;
-      right: 8px;
+      left: 8px;
       background: #1a1a2e;
       border: 1px solid #0f3460;
       border-radius: 4px;
@@ -977,9 +978,12 @@ class WebtmuxSidebar extends LitElement {
   }
 
   render() {
+    // Sidebar lives on the left, so chevron points toward the sidebar edge:
+    // open   → `<`  (click to collapse leftward, off-screen)
+    // collapsed → `>` (click to expand rightward, back into view)
     const toggleIcon = this.collapsed
-      ? html`<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>`
-      : html`<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>`;
+      ? html`<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>`
+      : html`<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>`;
 
     if (!this.layout) {
       return html`

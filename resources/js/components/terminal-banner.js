@@ -191,7 +191,14 @@ class WebtmuxTerminalBanner extends LitElement {
 
   constructor() {
     super();
-    this.visible = !this.isDismissed();
+    // In trial mode the banner hosts the "Open my app" button, so it stays
+    // visible always. In regular mode it's a plain nudge and can be dismissed.
+    if (this.isTrial()) {
+      this.clearDismissed();
+      this.visible = true;
+    } else {
+      this.visible = !this.isDismissed();
+    }
     this.appAvailable = false;
     this.justCameOnline = false;
     this._pollTimer = null;
@@ -204,6 +211,10 @@ class WebtmuxTerminalBanner extends LitElement {
     } catch (e) {
       return false;
     }
+  }
+
+  clearDismissed() {
+    try { localStorage.removeItem(STORAGE_KEY); } catch (e) {}
   }
 
   connectedCallback() {
@@ -356,7 +367,7 @@ class WebtmuxTerminalBanner extends LitElement {
               `}
         </span>
         ${openAppButton}
-        <button class="close" @click=${this.dismiss} aria-label="Dismiss">×</button>
+        ${trial ? '' : html`<button class="close" @click=${this.dismiss} aria-label="Dismiss">×</button>`}
       </div>
     `;
   }
