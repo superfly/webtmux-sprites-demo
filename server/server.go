@@ -303,11 +303,19 @@ func (server *Server) setupHandlers(ctx context.Context, cancel context.CancelFu
 		wsMux.Handle(pathPrefix, siteHandler)
 		wsMux.Handle("/", server.trialProxyHandler(pathPrefix))
 	} else {
+		// Non-trial mode: the terminal lives at /. If someone still hits
+		// /terminal (a habit from trial mode), send them home.
+		wsMux.HandleFunc("/terminal", redirectToRoot)
+		wsMux.HandleFunc("/terminal/", redirectToRoot)
 		wsMux.Handle("/", siteHandler)
 	}
 	siteHandler = http.Handler(wsMux)
 
 	return siteHandler
+}
+
+func redirectToRoot(w http.ResponseWriter, r *http.Request) {
+	http.Redirect(w, r, "/", http.StatusFound)
 }
 
 func (server *Server) setupHTTPServer(handler http.Handler) (*http.Server, error) {
